@@ -2,7 +2,7 @@
 # Uso: python3 montar.py <URL do app da web do Apps Script>
 import sys
 URL = sys.argv[1] if len(sys.argv) > 1 else ''
-s = open('original.html', encoding='utf-8').read()
+s = open('base.html', encoding='utf-8').read()
 def troca(a, b, n=1):
     global s
     assert s.count(a) == n, (a, s.count(a)); s = s.replace(a, b)
@@ -79,7 +79,8 @@ const Nuvem = {
     document.body.appendChild(b);
   },
   async vigiar(forcar) {
-    if (!this.ativa || document.hidden) return;
+    if (!this.ativa || document.hidden || (this.lendo && !forcar)) return;
+    this.lendo = true;
     try {
       const j = await this.ler(true);
       if (j.rev === this.rev) { this.aviso(false); return; }
@@ -89,10 +90,10 @@ const Nuvem = {
       this.rev = k.rev; this.marca(k.state); this.aviso(false);
       if (this.txt(k.state) === this.txt(state)) return;
       state = migrate(k.state); await DB.set('state', state); route();
-    } catch { }
+    } catch { } finally { this.lendo = false; }
   },
 };
-setInterval(() => Nuvem.vigiar(), 8000);
+setInterval(() => Nuvem.vigiar(), 3000);
 document.addEventListener('focusout', () => setTimeout(() => Nuvem.vigiar(), 300));
 document.addEventListener('visibilitychange', () => { if (!document.hidden) Nuvem.vigiar(); });
 

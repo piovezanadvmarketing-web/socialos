@@ -860,6 +860,8 @@ function migrate(s) {
     const x = Object.assign({ id: uid(), title: '', network: firstNet, format: '', date: '', time: '', status: s.columns[0].id, caption: '', hashtags: '', image: '', blocks: [], tags: [], done: false, order: 0, createdAt: Date.now(), updatedAt: Date.now() }, p);
     if (!NETWORKS[x.network]) x.network = firstNet;
     if (!x.format) x.format = NETWORKS[x.network].formats[0];
+    x.networks = (Array.isArray(x.networks) ? x.networks : [x.network]).filter(n => NETWORKS[n]); if (!x.networks.length) x.networks = [x.network]; x.network = x.networks[0];
+    x.formats = (Array.isArray(x.formats) ? x.formats : [x.format]).filter(Boolean); if (!x.formats.length) x.formats = [x.format]; x.format = x.formats[0];
     if (!colIds.has(x.status)) x.status = s.columns[0].id;
     if (!Array.isArray(x.blocks)) x.blocks = [];
     x.tags = Array.isArray(x.tags) ? x.tags.filter(t => tagIds.has(t)) : [];
@@ -951,7 +953,15 @@ function toggleDone(id) {
   } else p.done = true;
   touch(p); save(); renderMain(); renderSidebar(); if (ui.postId === id) renderPost();
 }
-const filtered = list => (ui.net === 'all' ? list : list.filter(p => p.network === ui.net));
+const nets = p => (p.networks && p.networks.length ? p.networks : [p.network]).filter(n => NETWORKS[n]);
+const fmts = p => (p.formats && p.formats.length ? p.formats : [p.format]).filter(Boolean);
+const fmtText = p => fmts(p).join(' + ');
+const netBadges = p => nets(p).map(netBadge).join('');
+const netPills = p => nets(p).map(netPill).join(' ');
+const netNames = p => nets(p).map(n => NETWORKS[n].name).join(' + ');
+const formatsOf = p => [...new Set([...nets(p).flatMap(n => NETWORKS[n].formats), ...fmts(p)])];
+const syncPost = p => { p.networks = nets(p); if (!p.networks.length) p.networks = [Object.keys(NETWORKS)[0]]; p.network = p.networks[0]; p.formats = fmts(p); if (!p.formats.length) p.formats = [NETWORKS[p.network].formats[0]]; p.format = p.formats[0]; };
+const filtered = list => (ui.net === 'all' ? list : list.filter(p => nets(p).includes(ui.net)));
 const nextOrder = col => Math.max(-1, ...state.posts.filter(p => p.status === col).map(p => p.order || 0)) + 1;
 
 /* ---------------- small components ---------------- */
@@ -1094,11 +1104,19 @@ function pickStatus(anchor, p) {
 }
 function pickNetwork(anchor, p) {
   optionPicker(anchor, {
-    title: 'Rede social', list: () => Object.entries(NETWORKS).map(([id, n]) => ({ id, name: n.name, color: n.color })), isSel: id => p.network === id,
-    onSelect: id => { if (p.network !== id) { p.network = id; const fm = NETWORKS[id].formats; if (!fm.includes(p.format)) p.format = fm[0]; touch(p); } },
+    title: 'Rede social', multi: true, list: () => Object.entries(NETWORKS).map(([id, n]) => ({ id, name: n.name, color: n.color })), isSel: id => nets(p).includes(id),
+    onSelect: id => { const l = nets(p); if (l.includes(id)) { if (l.length > 1) p.networks = l.filter(n => n !== id); } else p.networks = [...l, id]; syncPost(p); touch(p); },
     onCreate: name => addNetwork(name),
     onEdit: (id, patch) => { if (patch.name) renameNetwork(NETWORKS[id], patch.name); if (patch.color) NETWORKS[id].color = patch.color; },
     onDelete: id => deleteNetwork(id),
+  });
+}
+function pickFormats(anchor, p) {
+  optionPicker(anchor, {
+    title: 'Formato', multi: true, list: () => formatsOf(p).map(f => ({ id: f, name: f, color: '#94a3b8' })), isSel: id => fmts(p).includes(id),
+    onSelect: id => { const l = fmts(p); if (l.includes(id)) { if (l.length > 1) p.formats = l.filter(f => f !== id); } else p.formats = [...l, id]; syncPost(p); touch(p); },
+    onCreate: name => { p.formats = [...fmts(p), name]; syncPost(p); touch(p); return null; },
+    onEdit: (id, patch) => { if (patch.name) { p.formats = fmts(p).map(f => f === id ? patch.name : f); syncPost(p); touch(p); } },
   });
 }
 function pickTags(anchor, p) {
@@ -1120,9 +1138,9 @@ function addNetwork(name = 'Nova rede') {
 function deleteNetwork(id) {
   const keys = Object.keys(NETWORKS);
   if (keys.length <= 1) { toast('É preciso ter pelo menos uma rede'); return false; }
-  const fb = keys.find(k => k !== id); const n = state.posts.filter(p => p.network === id).length;
+  const fb = keys.find(k => k !== id); const n = state.posts.filter(p => nets(p).includes(id)).length;
   if (!confirm(`Excluir a rede "${NETWORKS[id].name}"?${n ? `\n\n${n} post(s) serão movidos para "${NETWORKS[fb].name}".` : ''}`)) return false;
-  state.posts.forEach(p => { if (p.network === id) { p.network = fb; if (!NETWORKS[fb].formats.includes(p.format)) p.format = NETWORKS[fb].formats[0]; } });
+  state.posts.forEach(p => { if (nets(p).includes(id)) { p.networks = nets(p).filter(n => n !== id); if (!p.networks.length) p.networks = [fb]; syncPost(p); } });
   delete NETWORKS[id];
   if (ui.net === id) ui.net = 'all';
   save(); return true;
@@ -1575,7 +1593,7 @@ function postRow(p, done) {
   return `<div class="prow ${late ? 'late' : ''} ${isDone(p, done) ? 'is-done' : ''}" data-act="open-post" data-post="${p.id}">
     <div class="pdate">${d ? `<b>${pad(d.getDate())}</b><small>${WEEKDAYS[d.getDay()]}</small>` : '<b>–</b><small>s/d</small>'}</div>
     <div style="min-width:0"><div class="ptitle">${esc(p.title || 'Sem título')}</div>
-      <div class="pmeta">${netBadge(p.network)}<span>${esc(p.format)}</span>${p.time ? `<span>· ${p.time}</span>` : ''}${late ? `<span style="color:var(--danger)">· atrasado</span>` : ''}</div></div>
+      <div class="pmeta">${netBadges(p)}<span>${esc(fmtText(p))}</span>${p.time ? `<span>· ${p.time}</span>` : ''}${late ? `<span style="color:var(--danger)">· atrasado</span>` : ''}</div></div>
     <div class="row">${p.image ? `<img class="pthumb" src="${esc(safeSrc(p.image))}" alt="">` : ''}${statusPill(p.status)}</div>
   </div>`;
 }
@@ -1591,7 +1609,7 @@ function viewDashboard() {
   const pubMonth = posts.filter(p => isDone(p, done) && (p.date || '').startsWith(mo));
   const h = now.getHours(); const hi = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
   const maxCol = Math.max(1, ...state.columns.map(c => posts.filter(p => p.status === c.id).length));
-  const maxNet = Math.max(1, ...Object.keys(NETWORKS).map(k => posts.filter(p => p.network === k).length));
+  const maxNet = Math.max(1, ...Object.keys(NETWORKS).map(k => posts.filter(p => nets(p).includes(k)).length));
   const recent = [...state.pages].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 5);
   const dateStr = `${WEEKDAYS[now.getDay()]}, ${now.getDate()} de ${MONTHS[now.getMonth()].toLowerCase()}`;
   return `
@@ -1614,7 +1632,7 @@ function viewDashboard() {
         ${state.columns.map(c => { const n = posts.filter(p => p.status === c.id).length; return `<div class="bar-row" style="--c:${c.color}"><span class="bar-l"><i></i>${esc(c.name)}</span><div class="bar"><i style="width:${(n / maxCol) * 100}%"></i></div><span class="bar-n">${n}</span></div>`; }).join('')}
       </div></div>
       <div class="panel"><h3>Por rede</h3><div class="bars">
-        ${Object.entries(NETWORKS).map(([k, N]) => { const n = posts.filter(p => p.network === k).length; return `<div class="bar-row" style="--c:${N.color}"><span class="bar-l"><i></i>${N.name}</span><div class="bar"><i style="width:${(n / maxNet) * 100}%"></i></div><span class="bar-n">${n}</span></div>`; }).join('')}
+        ${Object.entries(NETWORKS).map(([k, N]) => { const n = posts.filter(p => nets(p).includes(k)).length; return `<div class="bar-row" style="--c:${N.color}"><span class="bar-l"><i></i>${N.name}</span><div class="bar"><i style="width:${(n / maxNet) * 100}%"></i></div><span class="bar-n">${n}</span></div>`; }).join('')}
       </div></div>
       <div class="panel"><h3>Páginas recentes</h3><div class="recent">
         ${recent.map(p => `<a class="page-item" data-act="open-page" data-id="${p.id}"><span class="pi-ic">${esc(p.icon || '📄')}</span><span class="pi-t">${esc(p.title || 'Sem título')}</span><span class="mi-hint">${timeAgo(p.updatedAt)}</span></a>`).join('') || '<div class="empty">Nenhuma página.</div>'}
@@ -1635,7 +1653,7 @@ function cardHTML(p, done) {
   return `<div class="card ${isDone(p, done) ? 'is-done' : ''}" draggable="true" data-act="open-post" data-post="${p.id}">
     ${p.image ? `<div class="card-img"><img src="${esc(safeSrc(p.image))}" alt="" draggable="false"></div>` : ''}
     <div class="card-body"><div class="card-top">${doneCheck(p, done)}<div class="card-title ${p.title ? '' : 'untitled'}">${esc(p.title || 'Sem título')}</div></div>
-    <div class="card-meta">${netBadge(p.network)}<span class="tag">${esc(p.format)}</span>${p.date ? `<span class="date ${late ? 'late' : ''}">${icon('calendar', 12)} ${fmtDate(p.date)}${p.time ? ' · ' + p.time : ''}</span>` : ''}${todoProgress(p.blocks)}</div>
+    <div class="card-meta">${netBadges(p)}<span class="tag">${esc(fmtText(p))}</span>${p.date ? `<span class="date ${late ? 'late' : ''}">${icon('calendar', 12)} ${fmtDate(p.date)}${p.time ? ' · ' + p.time : ''}</span>` : ''}${todoProgress(p.blocks)}</div>
     ${tags ? `<div class="card-tags">${tags}</div>` : ''}</div></div>`;
 }
 function viewKanban() {
@@ -1709,7 +1727,7 @@ function deleteCol(id) {
 /* ---------------- calendar ---------------- */
 function chipHTML(p, done) {
   const N = NETWORKS[p.network];
-  return `<div class="chip ${isDone(p, done) ? 'is-done' : ''} ${isLate(p, done) ? 'late' : ''}" draggable="true" data-act="open-post" data-post="${p.id}" style="--c:${N.color}" title="${esc(N.name + ' · ' + p.format + ' · ' + (getCol(p.status)?.name || ''))}">${p.image ? `<img src="${esc(safeSrc(p.image))}" alt="" draggable="false">` : ''}<span class="chip-t">${p.time ? `<b>${p.time}</b> ` : ''}${esc(p.title || 'Sem título')}</span></div>`;
+  return `<div class="chip ${isDone(p, done) ? 'is-done' : ''} ${isLate(p, done) ? 'late' : ''}" draggable="true" data-act="open-post" data-post="${p.id}" style="--c:${N.color}" title="${esc(netNames(p) + ' · ' + fmtText(p) + ' · ' + (getCol(p.status)?.name || ''))}">${p.image ? `<img src="${esc(safeSrc(p.image))}" alt="" draggable="false">` : ''}<span class="chip-t">${p.time ? `<b>${p.time}</b> ` : ''}${esc(p.title || 'Sem título')}</span></div>`;
 }
 function viewCalendar() {
   const y = ui.cal.getFullYear(), m = ui.cal.getMonth();
@@ -1815,13 +1833,13 @@ function listPosts() {
   let list = filtered(state.posts);
   if (L.status !== 'all') list = list.filter(p => p.status === L.status);
   if (L.hideDone) { const done = doneSet(); list = list.filter(p => !isDone(p, done)); }
-  if (q) list = list.filter(p => norm(`${p.title} ${p.caption} ${p.hashtags} ${p.format} ${p.tags.map(t => getTag(t)?.name || '').join(' ')} ${customCols().map(c => propText(p, c)).join(' ')}`).includes(q));
+  if (q) list = list.filter(p => norm(`${p.title} ${p.caption} ${p.hashtags} ${fmtText(p)} ${netNames(p)} ${p.tags.map(t => getTag(t)?.name || '').join(' ')} ${customCols().map(c => propText(p, c)).join(' ')}`).includes(q));
   const colIdx = id => state.columns.findIndex(c => c.id === id);
   const last = '￿';
   let cmp = {
     title: (a, b) => norm(a.title || last).localeCompare(norm(b.title || last)),
     network: (a, b) => NETWORKS[a.network].name.localeCompare(NETWORKS[b.network].name),
-    format: (a, b) => a.format.localeCompare(b.format),
+    format: (a, b) => fmtText(a).localeCompare(fmtText(b)),
     status: (a, b) => colIdx(a.status) - colIdx(b.status),
     date: byDate,
     time: (a, b) => (a.time || '99').localeCompare(b.time || '99'),
@@ -1841,7 +1859,7 @@ function listPosts() {
 function listGroups(posts) {
   const g = ui.list.group;
   if (g === 'status') return state.columns.map(c => ({ key: c.id, label: c.name, color: c.color, preset: `data-status="${c.id}"`, items: posts.filter(p => p.status === c.id) }));
-  if (g === 'network') return Object.entries(NETWORKS).map(([k, N]) => ({ key: k, label: N.name, color: N.color, preset: `data-network="${k}"`, items: posts.filter(p => p.network === k) }));
+  if (g === 'network') return Object.entries(NETWORKS).map(([k, N]) => ({ key: k, label: N.name, color: N.color, preset: `data-network="${k}"`, items: posts.filter(p => nets(p).includes(k)) }));
   if (g === 'tags') return [...state.tags.map(t => ({ key: t.id, label: t.name, color: t.color, preset: `data-tag="${t.id}"`, items: posts.filter(p => p.tags.includes(t.id)) })), { key: 'notag', label: 'Sem tag', color: '#8A7F68', preset: '', items: posts.filter(p => !p.tags.length) }];
   if (g === 'month') {
     const m = {}; posts.forEach(p => { (m[p.date ? p.date.slice(0, 7) : ''] ||= []).push(p); });
@@ -1872,8 +1890,8 @@ function listCell(col, p, done) {
   const opts = (arr, cur) => arr.map(([v, l]) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(l)}</option>`).join('');
   switch (col.k) {
     case 'title': return `<div class="lc lc-title" data-act="open-post" data-post="${p.id}">${doneCheck(p, done)}${p.image ? `<img src="${esc(safeSrc(p.image))}" alt="">` : `<span class="lt-ic">${icon('page', 15)}</span>`}<span class="lt-t ${p.title ? '' : 'untitled'}">${esc(p.title || 'Sem título')}</span><span class="lt-open">ABRIR</span></div>`;
-    case 'network': return `<div class="lc"><button class="cellbtn" data-act="pick-network" data-post="${p.id}" title="Trocar ou editar rede">${netPill(p.network)}</button></div>`;
-    case 'format': return `<div class="lc"><select class="cell" data-lf="format" data-id="${p.id}">${opts([...new Set([...N.formats, p.format])].map(f => [f, f]), p.format)}</select></div>`;
+    case 'network': return `<div class="lc"><button class="cellbtn" data-act="pick-network" data-post="${p.id}" title="Escolher uma ou mais redes">${netPills(p)}</button></div>`;
+    case 'format': return `<div class="lc"><button class="cellbtn" data-act="pick-format" data-post="${p.id}" title="Escolher um ou mais formatos">${esc(fmtText(p))}</button></div>`;
     case 'status': return `<div class="lc"><button class="cellbtn" data-act="pick-status" data-post="${p.id}" title="Trocar ou editar etapa">${statusPill(p.status)}</button></div>`;
     case 'tags': return `<div class="lc"><button class="cellbtn tags" data-act="pick-tags" data-post="${p.id}" title="Escolher, criar ou editar tags">${tagPills(p) || '<span class="faint">+ tag</span>'}</button></div>`;
     case 'date': { const late = isLate(p, done); return `<div class="lc"><input type="date" class="cell ${late ? 'late' : ''}" data-lf="date" data-id="${p.id}" value="${p.date}" title="${late ? 'Atrasado' : ''}"></div>`; }
@@ -2331,7 +2349,7 @@ function renderPost() {
   const root = $('#modal-root');
   const prevScroll = $('.peek-scroll', root)?.scrollTop || 0;
   root.innerHTML = `<div class="overlay" data-act="overlay"><aside class="peek" role="dialog" aria-label="Post">
-    <div class="peek-bar"><span class="crumb">${netBadge(p.network)} ${N.name} · ${esc(p.format)}</span><div class="spacer"></div>
+    <div class="peek-bar"><span class="crumb">${netBadges(p)} ${esc(netNames(p))} · ${esc(fmtText(p))}</span><div class="spacer"></div>
       <button class="icon-btn" data-act="post-dup" title="Duplicar">${icon('copy')}</button>
       <button class="icon-btn" data-act="post-del" title="Excluir">${icon('trash')}</button>
       <button class="icon-btn" data-act="post-close" title="Fechar (Esc)">${icon('x')}</button></div>
@@ -2340,8 +2358,8 @@ function renderPost() {
       <div class="peek-head ${isDone(p) ? 'is-done' : ''}">${doneCheck(p)}<input class="peek-title" data-f="title" value="${esc(p.title)}" placeholder="Sem título" maxlength="140"></div>
       <div class="props">
         <div class="prop"><span class="prop-l">${icon('check', 14)} Concluído</span><div class="prop-v"><span class="muted small">${isDone(p) ? (p.done ? 'Sim — marcado como finalizado' : `Sim — está na etapa "${esc(getCol(p.status)?.name || '')}"`) : 'Não — clique no círculo ao lado do título'}</span></div></div>
-        <div class="prop"><span class="prop-l">${icon('globe', 14)} Rede</span><div class="prop-v"><button class="pillbtn" data-act="pick-network" title="Trocar, criar ou editar redes">${netPill(p.network)}</button></div></div>
-        <div class="prop"><span class="prop-l">${icon('layers', 14)} Formato</span><div class="prop-v"><select data-f="format">${[...new Set([...N.formats, p.format])].map(f => `<option ${f === p.format ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select></div></div>
+        <div class="prop"><span class="prop-l">${icon('globe', 14)} Rede</span><div class="prop-v"><button class="pillbtn" data-act="pick-network" title="Escolher uma ou mais redes">${netPills(p)}</button></div></div>
+        <div class="prop"><span class="prop-l">${icon('layers', 14)} Formato</span><div class="prop-v"><button class="pillbtn" data-act="pick-format" title="Escolher um ou mais formatos">${esc(fmtText(p))}</button></div></div>
         <div class="prop"><span class="prop-l">${icon('flag', 14)} Etapa</span><div class="prop-v"><button class="pillbtn" data-act="pick-status" title="Trocar, criar ou editar etapas">${statusPill(p.status)}</button></div></div>
         <div class="prop"><span class="prop-l">${icon('tag', 14)} Tags</span><div class="prop-v"><button class="pillbtn tags" data-act="pick-tags" title="Escolher, criar ou editar tags">${tagPills(p) || '<span class="faint">Vazio — clique para adicionar</span>'}</button></div></div>
         ${customCols().map(c => `<div class="prop prop-custom"><button class="prop-l prop-lbtn" data-act="peek-prop-menu" data-k="${c.k}" title="Renomear, mudar tipo ou excluir">${icon(propType(c.type).ic, 14)} <span>${esc(c.label)}</span></button><div class="prop-v t-${c.type}">${propInput(p, c, true)}</div></div>`).join('')}
@@ -2381,7 +2399,7 @@ function onPostField(p, el) {
 function autosize(el) { el.style.height = 'auto'; el.style.height = Math.max(el.scrollHeight + 2, el.classList.contains('sm') ? 62 : 120) + 'px'; }
 function countTags(s) { return (String(s).match(/#[\p{L}\p{N}_]+/gu) || []).length; }
 function updateCounters(p) {
-  const lim = NETWORKS[p.network].limit;
+  const lim = Math.min(...nets(p).map(n => NETWORKS[n].limit));
   const len = [...(p.caption || '')].length + (p.hashtags ? [...('\n\n' + p.hashtags)].length : 0);
   const cc = $('#cap-count'); if (cc) { cc.textContent = `${len.toLocaleString('pt-BR')} / ${lim.toLocaleString('pt-BR')} caracteres (com hashtags)`; cc.classList.toggle('bad', len > lim); }
   const tc = $('#tag-count'); if (tc) { const n = countTags(p.hashtags) + countTags(p.caption); tc.textContent = `${n} hashtag${n === 1 ? '' : 's'}`; }
@@ -2456,6 +2474,7 @@ const ACT = {
   'tag-del': el => { if (deleteTag(el.dataset.tag)) render(); },
   'pick-status': el => { const p = getPost(el.dataset.post || ui.postId); if (p) pickStatus(el, p); },
   'pick-network': el => { const p = getPost(el.dataset.post || ui.postId); if (p) pickNetwork(el, p); },
+  'pick-format': el => { const p = getPost(el.dataset.post || ui.postId); if (p) pickFormats(el, p); },
   'pick-tags': el => { const p = getPost(el.dataset.post || ui.postId); if (p) pickTags(el, p); },
   'kanban-layout': el => {
     const S = state.settings;
@@ -2689,7 +2708,8 @@ const Nuvem = {
     document.body.appendChild(b);
   },
   async vigiar(forcar) {
-    if (!this.ativa || document.hidden) return;
+    if (!this.ativa || document.hidden || (this.lendo && !forcar)) return;
+    this.lendo = true;
     try {
       const j = await this.ler(true);
       if (j.rev === this.rev) { this.aviso(false); return; }
@@ -2699,10 +2719,10 @@ const Nuvem = {
       this.rev = k.rev; this.marca(k.state); this.aviso(false);
       if (this.txt(k.state) === this.txt(state)) return;
       state = migrate(k.state); await DB.set('state', state); route();
-    } catch { }
+    } catch { } finally { this.lendo = false; }
   },
 };
-setInterval(() => Nuvem.vigiar(), 8000);
+setInterval(() => Nuvem.vigiar(), 3000);
 document.addEventListener('focusout', () => setTimeout(() => Nuvem.vigiar(), 300));
 document.addEventListener('visibilitychange', () => { if (!document.hidden) Nuvem.vigiar(); });
 

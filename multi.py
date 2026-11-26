@@ -1,0 +1,63 @@
+# Gera base.html a partir de original.html: o post passa a ter várias redes (p.networks) e vários formatos (p.formats).
+# p.network e p.format continuam como o primeiro de cada lista, para a cor, o limite de caracteres e o que já existia.
+s = open('original.html', encoding='utf-8').read()
+def t(a, b, n=1):
+    global s
+    assert s.count(a) == n, (a[:70], s.count(a)); s = s.replace(a, b)
+
+# migração
+t("    if (!x.format) x.format = NETWORKS[x.network].formats[0];\n",
+  "    if (!x.format) x.format = NETWORKS[x.network].formats[0];\n"
+  "    x.networks = (Array.isArray(x.networks) ? x.networks : [x.network]).filter(n => NETWORKS[n]); if (!x.networks.length) x.networks = [x.network]; x.network = x.networks[0];\n"
+  "    x.formats = (Array.isArray(x.formats) ? x.formats : [x.format]).filter(Boolean); if (!x.formats.length) x.formats = [x.format]; x.format = x.formats[0];\n")
+# ajudantes, antes do filtro
+t("const filtered = list => (ui.net === 'all' ? list : list.filter(p => p.network === ui.net));",
+  "const nets = p => (p.networks && p.networks.length ? p.networks : [p.network]).filter(n => NETWORKS[n]);\n"
+  "const fmts = p => (p.formats && p.formats.length ? p.formats : [p.format]).filter(Boolean);\n"
+  "const fmtText = p => fmts(p).join(' + ');\n"
+  "const netBadges = p => nets(p).map(netBadge).join('');\n"
+  "const netPills = p => nets(p).map(netPill).join(' ');\n"
+  "const netNames = p => nets(p).map(n => NETWORKS[n].name).join(' + ');\n"
+  "const formatsOf = p => [...new Set([...nets(p).flatMap(n => NETWORKS[n].formats), ...fmts(p)])];\n"
+  "const syncPost = p => { p.networks = nets(p); if (!p.networks.length) p.networks = [Object.keys(NETWORKS)[0]]; p.network = p.networks[0]; p.formats = fmts(p); if (!p.formats.length) p.formats = [NETWORKS[p.network].formats[0]]; p.format = p.formats[0]; };\n"
+  "const filtered = list => (ui.net === 'all' ? list : list.filter(p => nets(p).includes(ui.net)));")
+# seletor de rede: várias
+t("title: 'Rede social', list: () => Object.entries(NETWORKS).map(([id, n]) => ({ id, name: n.name, color: n.color })), isSel: id => p.network === id,",
+  "title: 'Rede social', multi: true, list: () => Object.entries(NETWORKS).map(([id, n]) => ({ id, name: n.name, color: n.color })), isSel: id => nets(p).includes(id),")
+t("    onSelect: id => { if (p.network !== id) { p.network = id; const fm = NETWORKS[id].formats; if (!fm.includes(p.format)) p.format = fm[0]; touch(p); } },",
+  "    onSelect: id => { const l = nets(p); if (l.includes(id)) { if (l.length > 1) p.networks = l.filter(n => n !== id); } else p.networks = [...l, id]; syncPost(p); touch(p); },")
+# seletor de formato, novo
+t("function pickTags(anchor, p) {",
+  "function pickFormats(anchor, p) {\n"
+  "  optionPicker(anchor, {\n"
+  "    title: 'Formato', multi: true, list: () => formatsOf(p).map(f => ({ id: f, name: f, color: '#94a3b8' })), isSel: id => fmts(p).includes(id),\n"
+  "    onSelect: id => { const l = fmts(p); if (l.includes(id)) { if (l.length > 1) p.formats = l.filter(f => f !== id); } else p.formats = [...l, id]; syncPost(p); touch(p); },\n"
+  "    onCreate: name => { p.formats = [...fmts(p), name]; syncPost(p); touch(p); return null; },\n"
+  "    onEdit: (id, patch) => { if (patch.name) { p.formats = fmts(p).map(f => f === id ? patch.name : f); syncPost(p); touch(p); } },\n"
+  "  });\n"
+  "}\n"
+  "function pickTags(anchor, p) {")
+# apagar rede
+t("const n = state.posts.filter(p => p.network === id).length;", "const n = state.posts.filter(p => nets(p).includes(id)).length;")
+t("state.posts.forEach(p => { if (p.network === id) { p.network = fb; if (!NETWORKS[fb].formats.includes(p.format)) p.format = NETWORKS[fb].formats[0]; } });",
+  "state.posts.forEach(p => { if (nets(p).includes(id)) { p.networks = nets(p).filter(n => n !== id); if (!p.networks.length) p.networks = [fb]; syncPost(p); } });")
+# exibição
+t("<div class=\"pmeta\">${netBadge(p.network)}<span>${esc(p.format)}</span>", "<div class=\"pmeta\">${netBadges(p)}<span>${esc(fmtText(p))}</span>")
+t("<div class=\"card-meta\">${netBadge(p.network)}<span class=\"tag\">${esc(p.format)}</span>", "<div class=\"card-meta\">${netBadges(p)}<span class=\"tag\">${esc(fmtText(p))}</span>")
+t("posts.filter(p => p.network === k).length", "posts.filter(p => nets(p).includes(k)).length", 2)
+t("items: posts.filter(p => p.network === k) }", "items: posts.filter(p => nets(p).includes(k)) }")
+t("title=\"${esc(N.name + ' · ' + p.format + ' · ", "title=\"${esc(netNames(p) + ' · ' + fmtText(p) + ' · ")
+t("${p.title} ${p.caption} ${p.hashtags} ${p.format} ", "${p.title} ${p.caption} ${p.hashtags} ${fmtText(p)} ${netNames(p)} ")
+t("format: (a, b) => a.format.localeCompare(b.format),", "format: (a, b) => fmtText(a).localeCompare(fmtText(b)),")
+t("title=\"Trocar ou editar rede\">${netPill(p.network)}</button>", "title=\"Escolher uma ou mais redes\">${netPills(p)}</button>")
+t("case 'format': return `<div class=\"lc\"><select class=\"cell\" data-lf=\"format\" data-id=\"${p.id}\">${opts([...new Set([...N.formats, p.format])].map(f => [f, f]), p.format)}</select></div>`;",
+  "case 'format': return `<div class=\"lc\"><button class=\"cellbtn\" data-act=\"pick-format\" data-post=\"${p.id}\" title=\"Escolher um ou mais formatos\">${esc(fmtText(p))}</button></div>`;")
+t("<span class=\"crumb\">${netBadge(p.network)} ${N.name} · ${esc(p.format)}</span>", "<span class=\"crumb\">${netBadges(p)} ${esc(netNames(p))} · ${esc(fmtText(p))}</span>")
+t("title=\"Trocar, criar ou editar redes\">${netPill(p.network)}</button>", "title=\"Escolher uma ou mais redes\">${netPills(p)}</button>")
+i = s.index('<div class="prop"><span class="prop-l">${icon(\'layers\', 14)} Formato</span><div class="prop-v"><select data-f="format">')
+j = s.index('</select>', i) + len('</select>')
+s = s[:i] + '<div class="prop"><span class="prop-l">${icon(\'layers\', 14)} Formato</span><div class="prop-v"><button class="pillbtn" data-act="pick-format" title="Escolher um ou mais formatos">${esc(fmtText(p))}</button>' + s[j:]
+t("  const lim = NETWORKS[p.network].limit;", "  const lim = Math.min(...nets(p).map(n => NETWORKS[n].limit));")
+t("  'pick-tags': el => {", "  'pick-format': el => { const p = getPost(el.dataset.post || ui.postId); if (p) pickFormats(el, p); },\n  'pick-tags': el => {")
+open('base.html', 'w', encoding='utf-8').write(s)
+print('base.html gerado')
