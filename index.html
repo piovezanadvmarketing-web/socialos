@@ -731,7 +731,7 @@ html.theme-anim,html.theme-anim *{transition:background-color .25s,border-color 
 }
 
 
-.ltable-wrap{overflow:auto!important;max-height:calc(100vh - 300px)!important;scrollbar-color:auto;scrollbar-width:auto}
+.ltable-wrap{overflow-x:auto!important;scrollbar-color:auto;scrollbar-width:auto}
 .ltable-wrap::-webkit-scrollbar{width:12px!important;height:12px!important;display:block}
 .ltable-wrap::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--muted) 70%,transparent);border-radius:99px;border:3px solid var(--panel)}
 .ltable-wrap::-webkit-scrollbar-thumb:hover{background:var(--muted)}
@@ -2901,21 +2901,10 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) Nuve
     const mostra = () => { bar.style.display = max() > 4 ? 'flex' : 'none'; r.value = max() ? Math.round(w.scrollLeft / max() * 1000) : 0; };
     r.addEventListener('input', () => { w.scrollLeft = r.value / 1000 * max(); });
     bar.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { w.scrollBy({ left: Number(b.dataset.d) * w.clientWidth * 0.6, behavior: 'smooth' }); }));
-    // barra vertical, à direita da tabela
-    const caixa = document.createElement('div'); caixa.className = 'lcaixa';
-    w.parentNode.insertBefore(caixa, w); caixa.appendChild(w);
-    const v = document.createElement('div'); v.className = 'lvert';
-    v.innerHTML = '<button type="button" data-v="-1" title="Para cima">▲</button><input type="range" min="0" max="1000" value="0" aria-label="Rolar a tabela para cima e para baixo"><button type="button" data-v="1" title="Para baixo">▼</button>';
-    caixa.appendChild(v);
-    const rv = v.querySelector('input');
-    const maxV = () => Math.max(0, w.scrollHeight - w.clientHeight);
-    const mostraV = () => { v.style.display = maxV() > 4 ? 'flex' : 'none'; rv.value = maxV() ? Math.round(w.scrollTop / maxV() * 1000) : 0; };
-    rv.addEventListener('input', () => { w.scrollTop = rv.value / 1000 * maxV(); });
-    v.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { w.scrollBy({ top: Number(b.dataset.v) * w.clientHeight * 0.6, behavior: 'smooth' }); }));
-    w.addEventListener('scroll', () => { mostra(); mostraV(); });
-    new ResizeObserver(() => { mostra(); mostraV(); }).observe(w);
-    new MutationObserver(() => { mostra(); mostraV(); }).observe(w, { childList: true, subtree: true });
-    mostra(); mostraV();
+    w.addEventListener('scroll', mostra);
+    new ResizeObserver(mostra).observe(w);
+    new MutationObserver(mostra).observe(w, { childList: true, subtree: true });
+    mostra();
   }
   new MutationObserver(() => document.querySelectorAll('.ltable-wrap').forEach(ligar)).observe(document.body, { childList: true, subtree: true });
   document.querySelectorAll('.ltable-wrap').forEach(ligar);
