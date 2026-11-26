@@ -61,3 +61,52 @@ t("  const lim = NETWORKS[p.network].limit;", "  const lim = Math.min(...nets(p)
 t("  'pick-tags': el => {", "  'pick-format': el => { const p = getPost(el.dataset.post || ui.postId); if (p) pickFormats(el, p); },\n  'pick-tags': el => {")
 open('base.html', 'w', encoding='utf-8').write(s)
 print('base.html gerado')
+
+# Lista: barra de rolagem sempre visível, a de baixo sempre na tela (a tabela rola dentro de uma caixa da altura da janela).
+CSS = """
+.ltable-wrap{overflow:auto;max-height:calc(100vh - 230px);scrollbar-color:auto;scrollbar-width:auto}
+.ltable-wrap::-webkit-scrollbar{width:12px!important;height:12px!important;display:block}
+.ltable-wrap::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--muted) 70%,transparent);border-radius:99px;border:3px solid var(--panel)}
+.ltable-wrap::-webkit-scrollbar-thumb:hover{background:var(--muted)}
+.ltable-wrap::-webkit-scrollbar-track{background:var(--hover)}
+.ltable-wrap::-webkit-scrollbar-corner{background:var(--panel)}
+"""
+s = open('base.html', encoding='utf-8').read()
+assert s.count('</style>') >= 1
+s = s.replace('</style>', CSS + '</style>', 1)
+open('base.html', 'w', encoding='utf-8').write(s)
+print('css da lista posto')
+
+# Barra de rolagem lateral própria, em cima da tabela: no Mac a barra nativa fica escondida até rolar com o trackpad.
+JS = """
+<script>
+(function () {
+  const css = document.createElement('style');
+  css.textContent = '.lrolo{display:flex;align-items:center;gap:10px;margin:0 0 8px;font:600 12px system-ui;color:var(--muted)}' +
+    '.lrolo input{flex:1;accent-color:var(--accent);height:18px;cursor:pointer}' +
+    '.lrolo button{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:8px;width:30px;height:26px;cursor:pointer;font-size:14px}';
+  document.head.appendChild(css);
+  function ligar(w) {
+    if (w.previousElementSibling && w.previousElementSibling.classList.contains('lrolo')) return;
+    const bar = document.createElement('div'); bar.className = 'lrolo';
+    bar.innerHTML = '<span>Rolar para o lado</span><button type="button" data-d="-1" title="Para a esquerda">◀</button><input type="range" min="0" max="1000" value="0" aria-label="Rolar a tabela para o lado"><button type="button" data-d="1" title="Para a direita">▶</button>';
+    w.parentNode.insertBefore(bar, w);
+    const r = bar.querySelector('input');
+    const max = () => Math.max(0, w.scrollWidth - w.clientWidth);
+    const mostra = () => { bar.style.display = max() > 4 ? 'flex' : 'none'; r.value = max() ? Math.round(w.scrollLeft / max() * 1000) : 0; };
+    r.addEventListener('input', () => { w.scrollLeft = r.value / 1000 * max(); });
+    bar.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { w.scrollBy({ left: Number(b.dataset.d) * w.clientWidth * 0.6, behavior: 'smooth' }); }));
+    w.addEventListener('scroll', mostra);
+    new ResizeObserver(mostra).observe(w);
+    mostra();
+  }
+  new MutationObserver(() => document.querySelectorAll('.ltable-wrap').forEach(ligar)).observe(document.body, { childList: true, subtree: true });
+  document.querySelectorAll('.ltable-wrap').forEach(ligar);
+})();
+</script>
+"""
+s = open('base.html', encoding='utf-8').read()
+i = s.rindex('</body>')
+s = s[:i] + JS + s[i:]
+open('base.html', 'w', encoding='utf-8').write(s)
+print('rolagem lateral posta')
