@@ -141,3 +141,46 @@ print('rolagem lateral posta')
 # Cor e ícone de cada formato (patch do Kivuli)
 import subprocess, sys as _sys
 subprocess.run([_sys.executable, 'formatos.py', 'base.html'], check=True)
+
+# Barra vertical visível também nos menus (seletor de rede, formato, etapa, tags): no Mac a nativa fica escondida.
+JS2 = """
+<script>
+(function () {
+  const css = document.createElement('style');
+  css.textContent = '.mbarra{position:fixed;z-index:101;width:16px;display:flex;flex-direction:column;align-items:center;gap:2px}' +
+    '.mbarra input{flex:1;writing-mode:vertical-lr;direction:ltr;width:14px;margin:0;accent-color:var(--accent);cursor:pointer}' +
+    '.mbarra button{border:0;background:transparent;color:var(--muted);font-size:10px;line-height:1;cursor:pointer;padding:2px}';
+  document.head.appendChild(css);
+  const ligados = new Map();
+  function ligar(el) {
+    if (ligados.has(el)) return;
+    const b = document.createElement('div'); b.className = 'mbarra';
+    b.innerHTML = '<button type="button" data-v="-1" title="Para cima">▲</button><input type="range" min="0" max="1000" value="0" aria-label="Rolar a lista para cima e para baixo"><button type="button" data-v="1" title="Para baixo">▼</button>';
+    document.body.appendChild(b);
+    const r = b.querySelector('input');
+    const max = () => Math.max(0, el.scrollHeight - el.clientHeight);
+    r.addEventListener('input', () => { el.scrollTop = r.value / 1000 * max(); });
+    b.addEventListener('mousedown', e => e.preventDefault());
+    b.querySelectorAll('button').forEach(x => x.addEventListener('click', e => { e.stopPropagation(); el.scrollBy({ top: Number(x.dataset.v) * el.clientHeight * 0.6, behavior: 'smooth' }); }));
+    ligados.set(el, { b, r, max });
+  }
+  function atualizar() {
+    document.querySelectorAll('.menu, .op-list').forEach(el => { if (el.scrollHeight - el.clientHeight > 4) ligar(el); });
+    for (const [el, o] of ligados) {
+      if (!document.body.contains(el)) { o.b.remove(); ligados.delete(el); continue; }
+      const m = o.max(); if (m <= 4) { o.b.style.display = 'none'; continue; }
+      const q = el.getBoundingClientRect();
+      Object.assign(o.b.style, { display: 'flex', left: (q.right - 18) + 'px', top: (q.top + 4) + 'px', height: Math.max(60, q.height - 8) + 'px' });
+      o.r.value = Math.round(el.scrollTop / m * 1000);
+    }
+    requestAnimationFrame(atualizar);
+  }
+  requestAnimationFrame(atualizar);
+})();
+</script>
+"""
+s = open('base.html', encoding='utf-8').read()
+i = s.rindex('</body>')
+s = s[:i] + JS2 + s[i:]
+open('base.html', 'w', encoding='utf-8').write(s)
+print('barra dos menus posta')
