@@ -1,6 +1,9 @@
 # Gera base.html a partir de original.html: o post passa a ter várias redes (p.networks) e vários formatos (p.formats).
 # p.network e p.format continuam como o primeiro de cada lista, para a cor, o limite de caracteres e o que já existia.
 s = open('original.html', encoding='utf-8').read()
+# Tema do Kivuli (26/11/2026): o <style> inteiro vem de tema.css.
+i = s.index('<style>') + len('<style>'); j = s.index('</style>', i)
+s = s[:i] + '\n' + open('tema.css', encoding='utf-8').read() + '\n' + s[j:]
 def t(a, b, n=1):
     global s
     assert s.count(a) == n, (a[:70], s.count(a)); s = s.replace(a, b)
@@ -134,3 +137,7 @@ i = s.rindex('</body>')
 s = s[:i] + JS + s[i:]
 open('base.html', 'w', encoding='utf-8').write(s)
 print('rolagem lateral posta')
+
+# Cor e ícone de cada formato (patch do Kivuli)
+import subprocess, sys as _sys
+subprocess.run([_sys.executable, 'formatos.py', 'base.html'], check=True)
