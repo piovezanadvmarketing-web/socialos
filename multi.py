@@ -76,6 +76,16 @@ t("formats: ['Post', 'Vídeo'], limit: 2200 };", "formats: [...FORMATOS], limit:
 # e quem ainda não foi arrastado segue pela data, como antes.
 t("    date: byDate,\n    time:", "    manual: (a, b) => ((a.lorder ?? 1e15) - (b.lorder ?? 1e15)) || byDate(a, b),\n    date: byDate,\n    time:")
 t("group: 'none', sort: 'date', dir: 1,", "group: 'none', sort: 'manual', dir: 1,")
+
+# Data e horário na lista: a data muda a cada parte digitada (dia, mês, ano), e redesenhar a lista a cada uma
+# tirava o foco do campo no meio da digitação. Agora grava na hora e só redesenha quando o campo perde o foco.
+t("  touch(p); save(); renderListBody(); renderSidebar();\n}\nfunction onPropField(el) {",
+  "  if ((f === 'date' || f === 'time') && document.activeElement === el) {\n"
+  "    touch(p); save();\n"
+  "    if (!el.dataset.espera) { el.dataset.espera = '1'; el.addEventListener('blur', () => { delete el.dataset.espera; renderListBody(); renderSidebar(); }, { once: true }); }\n"
+  "    return;\n"
+  "  }\n"
+  "  touch(p); save(); renderListBody(); renderSidebar();\n}\nfunction onPropField(el) {")
 open('base.html', 'w', encoding='utf-8').write(s)
 print('base.html gerado')
 
