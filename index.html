@@ -2780,10 +2780,13 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) Nuve
   const css = document.createElement('style');
   css.textContent = '.lrolo{display:flex;align-items:center;gap:10px;margin:0 0 8px;font:600 12px system-ui;color:var(--muted)}' +
     '.lrolo input{flex:1;accent-color:var(--accent);height:18px;cursor:pointer}' +
-    '.lrolo button{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:8px;width:30px;height:26px;cursor:pointer;font-size:14px}';
+    '.lcaixa{display:flex;gap:8px;align-items:stretch}.lcaixa>.ltable-wrap{flex:1;min-width:0}' +
+    '.lvert{display:flex;flex-direction:column;align-items:center;gap:6px;width:30px;max-height:calc(100vh - 230px)}' +
+    '.lvert input{flex:1;writing-mode:vertical-lr;direction:ltr;width:18px;accent-color:var(--accent);cursor:pointer;margin:0}' +
+    '.lvert button,.lrolo button{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:8px;width:30px;height:26px;cursor:pointer;font-size:14px}';
   document.head.appendChild(css);
   function ligar(w) {
-    if (w.previousElementSibling && w.previousElementSibling.classList.contains('lrolo')) return;
+    if (w.dataset.rolo) return; w.dataset.rolo = '1';
     const bar = document.createElement('div'); bar.className = 'lrolo';
     bar.innerHTML = '<span>Rolar para o lado</span><button type="button" data-d="-1" title="Para a esquerda">◀</button><input type="range" min="0" max="1000" value="0" aria-label="Rolar a tabela para o lado"><button type="button" data-d="1" title="Para a direita">▶</button>';
     w.parentNode.insertBefore(bar, w);
@@ -2792,9 +2795,21 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) Nuve
     const mostra = () => { bar.style.display = max() > 4 ? 'flex' : 'none'; r.value = max() ? Math.round(w.scrollLeft / max() * 1000) : 0; };
     r.addEventListener('input', () => { w.scrollLeft = r.value / 1000 * max(); });
     bar.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { w.scrollBy({ left: Number(b.dataset.d) * w.clientWidth * 0.6, behavior: 'smooth' }); }));
-    w.addEventListener('scroll', mostra);
-    new ResizeObserver(mostra).observe(w);
-    mostra();
+    // barra vertical, à direita da tabela
+    const caixa = document.createElement('div'); caixa.className = 'lcaixa';
+    w.parentNode.insertBefore(caixa, w); caixa.appendChild(w);
+    const v = document.createElement('div'); v.className = 'lvert';
+    v.innerHTML = '<button type="button" data-v="-1" title="Para cima">▲</button><input type="range" min="0" max="1000" value="0" aria-label="Rolar a tabela para cima e para baixo"><button type="button" data-v="1" title="Para baixo">▼</button>';
+    caixa.appendChild(v);
+    const rv = v.querySelector('input');
+    const maxV = () => Math.max(0, w.scrollHeight - w.clientHeight);
+    const mostraV = () => { v.style.display = maxV() > 4 ? 'flex' : 'none'; rv.value = maxV() ? Math.round(w.scrollTop / maxV() * 1000) : 0; };
+    rv.addEventListener('input', () => { w.scrollTop = rv.value / 1000 * maxV(); });
+    v.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { w.scrollBy({ top: Number(b.dataset.v) * w.clientHeight * 0.6, behavior: 'smooth' }); }));
+    w.addEventListener('scroll', () => { mostra(); mostraV(); });
+    new ResizeObserver(() => { mostra(); mostraV(); }).observe(w);
+    new MutationObserver(() => { mostra(); mostraV(); }).observe(w, { childList: true, subtree: true });
+    mostra(); mostraV();
   }
   new MutationObserver(() => document.querySelectorAll('.ltable-wrap').forEach(ligar)).observe(document.body, { childList: true, subtree: true });
   document.querySelectorAll('.ltable-wrap').forEach(ligar);
