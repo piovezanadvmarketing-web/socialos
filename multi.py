@@ -71,6 +71,11 @@ t("// NETWORKS aponta para state.networks (editável); migrate() reatribui",
   "const paraFormato = f => { const n = String(f).toLowerCase(); if (FORMATOS.includes(f)) return f; if (n.includes('stor')) return 'Stories'; if (n.includes('carross')) return 'Carrossel'; if (/reel|v[ií]deo|short|live/.test(n)) return 'Reels'; return 'Post único'; };\n"
   "// NETWORKS aponta para state.networks (editável); migrate() reatribui")
 t("formats: ['Post', 'Vídeo'], limit: 2200 };", "formats: [...FORMATOS], limit: 2200 };")
+
+# Lista: ordem arrastada (pedido do Samuel, 26/11/2026). p.lorder guarda a posição; a ordem padrão da lista é a arrastada,
+# e quem ainda não foi arrastado segue pela data, como antes.
+t("    date: byDate,\n    time:", "    manual: (a, b) => ((a.lorder ?? 1e15) - (b.lorder ?? 1e15)) || byDate(a, b),\n    date: byDate,\n    time:")
+t("group: 'none', sort: 'date', dir: 1,", "group: 'none', sort: 'manual', dir: 1,")
 open('base.html', 'w', encoding='utf-8').write(s)
 print('base.html gerado')
 
@@ -182,3 +187,67 @@ i = s.rindex('</body>')
 s = s[:i] + JS2 + s[i:]
 open('base.html', 'w', encoding='utf-8').write(s)
 print('barra dos menus posta')
+
+# Arrastar linha da lista: alça ⋮⋮ em cada linha, linha de destino marcada, e a ordem grava em p.lorder.
+JS3 = """
+<script>
+(function () {
+  const css = document.createElement('style');
+  css.textContent = '.lrow{position:relative}.lalca{position:absolute;left:2px;top:50%;transform:translateY(-50%);width:18px;height:26px;display:grid;place-items:center;cursor:grab;color:var(--muted);opacity:.35;font-size:14px;letter-spacing:-2px;user-select:none;z-index:2}' +
+    '.lalca + .lc{padding-left:22px}.ltable:has(.lalca) .lhead>.lh:first-child{padding-left:30px}.lrow:hover .lalca{opacity:1}.lalca:active{cursor:grabbing}' +
+    '.lrow.arrastando{opacity:.4}.lrow.alvo-cima{box-shadow:inset 0 3px 0 var(--accent)}.lrow.alvo-baixo{box-shadow:inset 0 -3px 0 var(--accent)}' +
+    '.lordem{display:flex;align-items:center;gap:10px;margin:0 0 8px;font:500 13px system-ui;color:var(--muted)}' +
+    '.lordem button{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:8px;padding:4px 10px;cursor:pointer;font:600 12.5px system-ui}';
+  document.head.appendChild(css);
+  let arr = null, alvo = null, emCima = false;
+  function limpa() { document.querySelectorAll('.lrow.alvo-cima,.lrow.alvo-baixo').forEach(r => r.classList.remove('alvo-cima', 'alvo-baixo')); }
+  function ligarLinha(r) {
+    if (r.querySelector(':scope > .lalca')) return;
+    const h = document.createElement('div'); h.className = 'lalca'; h.textContent = '⋮⋮'; h.title = 'Arraste para mudar a ordem';
+    h.draggable = true;
+    h.addEventListener('dragstart', e => { arr = r.dataset.id; r.classList.add('arrastando'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', arr); try { e.dataTransfer.setDragImage(r, 20, 20); } catch (x) {} });
+    h.addEventListener('dragend', () => { r.classList.remove('arrastando'); limpa(); arr = null; });
+    r.prepend(h);
+  }
+  document.addEventListener('dragover', e => {
+    if (!arr) return; const r = e.target.closest && e.target.closest('.lrow'); if (!r || r.dataset.id === arr) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+    const q = r.getBoundingClientRect(); emCima = e.clientY < q.top + q.height / 2; alvo = r.dataset.id;
+    limpa(); r.classList.add(emCima ? 'alvo-cima' : 'alvo-baixo');
+  });
+  document.addEventListener('drop', e => {
+    if (!arr || !alvo) return; e.preventDefault(); limpa();
+    const ids = [...document.querySelectorAll('.lrow[data-id]')].map(x => x.dataset.id).filter(id => id !== arr);
+    let i = ids.indexOf(alvo); if (i < 0) return; if (!emCima) i++;
+    ids.splice(i, 0, arr);
+    // quem não está visível (filtro) mantém a posição relativa, depois dos visíveis
+    const vis = new Set(ids); const resto = state.posts.filter(p => !vis.has(p.id)).sort((a, b) => (a.lorder ?? 1e15) - (b.lorder ?? 1e15));
+    ids.forEach((id, k) => { const p = getPost(id); if (p) { if (p.lorder !== k) { p.lorder = k; touch(p); } } });
+    resto.forEach((p, k) => { const n = ids.length + k; if (p.lorder !== undefined && p.lorder !== n) { p.lorder = n; touch(p); } });
+    ui.list.sort = 'manual'; ui.list.dir = 1; arr = null; alvo = null;
+    save(); renderListBody();
+  });
+  function aviso(w) {
+    let a = w.parentNode.querySelector(':scope > .lordem');
+    if (!a) { a = document.createElement('div'); a.className = 'lordem'; w.parentNode.insertBefore(a, w.parentNode.querySelector(':scope > .lrolo') || w); }
+    const manual = ui.list.sort === 'manual';
+    const txt = manual ? 'Arraste pela alça ⋮⋮, à esquerda da linha, para mudar a ordem.' : 'A lista está ordenada por uma coluna. Para arrastar, volte à ordem arrastada.';
+    if (a.dataset.m !== String(manual)) {
+      a.dataset.m = String(manual);
+      a.innerHTML = '<span>' + txt + '</span>' + (manual ? '' : '<button type="button">Voltar à ordem arrastada</button>');
+      const b = a.querySelector('button'); if (b) b.onclick = () => { ui.list.sort = 'manual'; ui.list.dir = 1; renderListBody(); };
+    }
+  }
+  new MutationObserver(() => {
+    const manual = typeof ui !== 'undefined' && ui.list && ui.list.sort === 'manual';
+    document.querySelectorAll('.lrow[data-id]').forEach(r => { if (manual) ligarLinha(r); else r.querySelector(':scope > .lalca')?.remove(); });
+    document.querySelectorAll('.ltable-wrap').forEach(aviso);
+  }).observe(document.body, { childList: true, subtree: true });
+})();
+</script>
+"""
+s = open('base.html', encoding='utf-8').read()
+i = s.rindex('</body>')
+s = s[:i] + JS3 + s[i:]
+open('base.html', 'w', encoding='utf-8').write(s)
+print('arrastar na lista posto')
