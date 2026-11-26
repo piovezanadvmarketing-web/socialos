@@ -2942,7 +2942,16 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) Nuve
     b.querySelectorAll('button').forEach(x => x.addEventListener('click', e => { e.stopPropagation(); el.scrollBy({ top: Number(x.dataset.v) * el.clientHeight * 0.6, behavior: 'smooth' }); }));
     ligados.set(el, { b, r, max });
   }
+  // Menu aberto perto do pé da janela: sobe até caber; se não couber, encolhe e ganha a barra.
+  function caber(m) {
+    const q = m.getBoundingClientRect(), H = innerHeight, folga = 10;
+    if (q.bottom <= H - folga) return;
+    const alto = m.scrollHeight + 2;
+    if (alto <= H - 2 * folga) { m.style.top = (H - folga - alto) + 'px'; m.style.maxHeight = ''; }
+    else { m.style.top = folga + 'px'; m.style.maxHeight = (H - 2 * folga) + 'px'; }
+  }
   function atualizar() {
+    document.querySelectorAll('.menu').forEach(caber);
     document.querySelectorAll('.menu, .op-list').forEach(el => { if (el.scrollHeight - el.clientHeight > 4) ligar(el); });
     for (const [el, o] of ligados) {
       if (!document.body.contains(el)) { o.b.remove(); ligados.delete(el); continue; }
