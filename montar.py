@@ -15,7 +15,11 @@ NUVEM = r'''
 /* ---------------- nuvem (Google Apps Script): todos veem o mesmo ---------------- */
 const NUVEM_URL = '__URL__';
 const Nuvem = {
-  rev: null, ativa: false,
+  rev: null, ativa: false, ultimo: null,
+  // updatedAt fica de fora: o editor do post o renova só de abrir, e isso não é alteração de ninguém.
+  txt(st) { return JSON.stringify(st, (k, v) => k === 'updatedAt' ? undefined : v); },
+  igual(st) { return this.txt(st) === this.ultimo; },
+  marca(st) { this.ultimo = this.txt(st); },
   chave() {
     let c = localStorage.getItem('socialos-chave');
     if (!c) { c = prompt('Senha do SocialOS da equipe:') || ''; localStorage.setItem('socialos-chave', c); }
@@ -33,7 +37,7 @@ const Nuvem = {
       try {
         const j = await this.ler();
         this.ativa = true; this.rev = j.rev;
-        if (j.state) { await DB.set('state', j.state); return j.state; }
+        if (j.state) { this.marca(j.state); await DB.set('state', j.state); return j.state; }
         if (local) await this.gravar(local);
         return local;
       } catch (e) { if (e.message !== 'senha') break; alert('Senha errada. Tente de novo.'); }
@@ -44,18 +48,20 @@ const Nuvem = {
   },
   async gravar(st) {
     await DB.set('state', st);
-    if (!this.ativa) return true;
+    if (!this.ativa || this.igual(st)) return true;
     try {
       const r = await fetch(NUVEM_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ chave: this.chave(), base: this.rev, state: st }) });
       const j = await r.json();
       if (j.conflito) {
-        this.rev = j.rev; state = migrate(j.state || st); await DB.set('state', state); route();
+        this.rev = j.rev; this.marca(j.state);
+        if (this.txt(j.state) === this.txt(st)) return true;
+        state = migrate(j.state || st); await DB.set('state', state); route();
         toast('Outra pessoa salvou antes: a tela mostra a versão dela. Refaça a sua última alteração.');
         return true;
       }
       if (j.erro) return false;
-      this.rev = j.rev; return true;
+      this.rev = j.rev; this.marca(st); return true;
     } catch { return false; }
   },
   ocupado() {
@@ -80,7 +86,9 @@ const Nuvem = {
       if (!forcar && this.ocupado()) { this.aviso(true); return; }
       const k = await this.ler();
       if (dirty) return;
-      this.rev = k.rev; state = migrate(k.state); await DB.set('state', state); route(); this.aviso(false);
+      this.rev = k.rev; this.marca(k.state); this.aviso(false);
+      if (this.txt(k.state) === this.txt(state)) return;
+      state = migrate(k.state); await DB.set('state', state); route();
     } catch { }
   },
 };
