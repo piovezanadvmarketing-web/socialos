@@ -30,10 +30,9 @@ t("    onSelect: id => { if (p.network !== id) { p.network = id; const fm = NETW
 t("function pickTags(anchor, p) {",
   "function pickFormats(anchor, p) {\n"
   "  optionPicker(anchor, {\n"
-  "    title: 'Formato', multi: true, list: () => formatsOf(p).map(f => ({ id: f, name: f, color: '#94a3b8' })), isSel: id => fmts(p).includes(id),\n"
+  "    title: 'Formato', multi: true, list: () => FORMATOS.map(f => ({ id: f, name: f, color: '#94a3b8' })), isSel: id => fmts(p).includes(id),\n"
   "    onSelect: id => { const l = fmts(p); if (l.includes(id)) { if (l.length > 1) p.formats = l.filter(f => f !== id); } else p.formats = [...l, id]; syncPost(p); touch(p); },\n"
-  "    onCreate: name => { p.formats = [...fmts(p), name]; syncPost(p); touch(p); return null; },\n"
-  "    onEdit: (id, patch) => { if (patch.name) { p.formats = fmts(p).map(f => f === id ? patch.name : f); syncPost(p); touch(p); } },\n"
+  "    onEdit: () => {},\n"
   "  });\n"
   "}\n"
   "function pickTags(anchor, p) {")
@@ -59,6 +58,16 @@ j = s.index('</select>', i) + len('</select>')
 s = s[:i] + '<div class="prop"><span class="prop-l">${icon(\'layers\', 14)} Formato</span><div class="prop-v"><button class="pillbtn" data-act="pick-format" title="Escolher um ou mais formatos">${esc(fmtText(p))}</button>' + s[j:]
 t("  const lim = NETWORKS[p.network].limit;", "  const lim = Math.min(...nets(p).map(n => NETWORKS[n].limit));")
 t("  'pick-tags': el => {", "  'pick-format': el => { const p = getPost(el.dataset.post || ui.postId); if (p) pickFormats(el, p); },\n  'pick-tags': el => {")
+
+# Formatos: só os quatro que a equipe usa (pedido do Samuel, 26/11/2026). Os de antes passam ao mais próximo.
+t("  NETWORKS = s.networks;\n", "  for (const n of Object.values(s.networks)) n.formats = [...FORMATOS];\n  NETWORKS = s.networks;\n")
+t("    x.formats = (Array.isArray(x.formats) ? x.formats : [x.format]).filter(Boolean);",
+  "    x.formats = [...new Set((Array.isArray(x.formats) ? x.formats : [x.format]).filter(Boolean).map(paraFormato))];")
+t("// NETWORKS aponta para state.networks (editável); migrate() reatribui",
+  "const FORMATOS = ['Stories', 'Reels', 'Post único', 'Carrossel'];\n"
+  "const paraFormato = f => { const n = String(f).toLowerCase(); if (FORMATOS.includes(f)) return f; if (n.includes('stor')) return 'Stories'; if (n.includes('carross')) return 'Carrossel'; if (/reel|v[ií]deo|short|live/.test(n)) return 'Reels'; return 'Post único'; };\n"
+  "// NETWORKS aponta para state.networks (editável); migrate() reatribui")
+t("formats: ['Post', 'Vídeo'], limit: 2200 };", "formats: [...FORMATOS], limit: 2200 };")
 open('base.html', 'w', encoding='utf-8').write(s)
 print('base.html gerado')
 

@@ -736,6 +736,8 @@ const DEFAULT_TAGS = [
   { id: 't-collab', name: 'Collab', color: '#5B7A8C' },
   { id: 't-trend', name: 'Trend', color: '#C98A3D' },
 ];
+const FORMATOS = ['Stories', 'Reels', 'Post único', 'Carrossel'];
+const paraFormato = f => { const n = String(f).toLowerCase(); if (FORMATOS.includes(f)) return f; if (n.includes('stor')) return 'Stories'; if (n.includes('carross')) return 'Carrossel'; if (/reel|v[ií]deo|short|live/.test(n)) return 'Reels'; return 'Post único'; };
 // NETWORKS aponta para state.networks (editável); migrate() reatribui
 let NETWORKS;
 const DEFAULT_NETWORKS = {
@@ -858,6 +860,7 @@ function migrate(s) {
     const fm = Array.isArray(n.formats) ? n.formats.map(f => String(f).trim()).filter(Boolean) : [];
     s.networks[k] = { name: n.name || 'Rede', short: (n.short || n.name || 'R').slice(0, 3), color: isHex(n.color) ? n.color : '#94a3b8', formats: fm.length ? fm : ['Post'], limit: +n.limit > 0 ? +n.limit : 2200 };
   }
+  for (const n of Object.values(s.networks)) n.formats = [...FORMATOS];
   NETWORKS = s.networks;
   const firstNet = Object.keys(NETWORKS)[0];
   if (!Array.isArray(s.tags)) s.tags = clone(DEFAULT_TAGS);
@@ -868,7 +871,7 @@ function migrate(s) {
     if (!NETWORKS[x.network]) x.network = firstNet;
     if (!x.format) x.format = NETWORKS[x.network].formats[0];
     x.networks = (Array.isArray(x.networks) ? x.networks : [x.network]).filter(n => NETWORKS[n]); if (!x.networks.length) x.networks = [x.network]; x.network = x.networks[0];
-    x.formats = (Array.isArray(x.formats) ? x.formats : [x.format]).filter(Boolean); if (!x.formats.length) x.formats = [x.format]; x.format = x.formats[0];
+    x.formats = [...new Set((Array.isArray(x.formats) ? x.formats : [x.format]).filter(Boolean).map(paraFormato))]; if (!x.formats.length) x.formats = [x.format]; x.format = x.formats[0];
     if (!colIds.has(x.status)) x.status = s.columns[0].id;
     if (!Array.isArray(x.blocks)) x.blocks = [];
     x.tags = Array.isArray(x.tags) ? x.tags.filter(t => tagIds.has(t)) : [];
@@ -1120,10 +1123,9 @@ function pickNetwork(anchor, p) {
 }
 function pickFormats(anchor, p) {
   optionPicker(anchor, {
-    title: 'Formato', multi: true, list: () => formatsOf(p).map(f => ({ id: f, name: f, color: '#94a3b8' })), isSel: id => fmts(p).includes(id),
+    title: 'Formato', multi: true, list: () => FORMATOS.map(f => ({ id: f, name: f, color: '#94a3b8' })), isSel: id => fmts(p).includes(id),
     onSelect: id => { const l = fmts(p); if (l.includes(id)) { if (l.length > 1) p.formats = l.filter(f => f !== id); } else p.formats = [...l, id]; syncPost(p); touch(p); },
-    onCreate: name => { p.formats = [...fmts(p), name]; syncPost(p); touch(p); return null; },
-    onEdit: (id, patch) => { if (patch.name) { p.formats = fmts(p).map(f => f === id ? patch.name : f); syncPost(p); touch(p); } },
+    onEdit: () => {},
   });
 }
 function pickTags(anchor, p) {
@@ -1139,7 +1141,7 @@ const autoShort = name => String(name).replace(/[^\p{L}\p{N}]/gu, '').slice(0, 2
 function renameNetwork(n, name) { if (n.short === autoShort(n.name)) n.short = autoShort(name); n.name = name; }
 function addNetwork(name = 'Nova rede') {
   const id = 'net-' + uid();
-  NETWORKS[id] = { name, short: autoShort(name), color: SWATCHES[Object.keys(NETWORKS).length % SWATCHES.length], formats: ['Post', 'Vídeo'], limit: 2200 };
+  NETWORKS[id] = { name, short: autoShort(name), color: SWATCHES[Object.keys(NETWORKS).length % SWATCHES.length], formats: [...FORMATOS], limit: 2200 };
   return id;
 }
 function deleteNetwork(id) {
