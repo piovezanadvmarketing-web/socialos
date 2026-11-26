@@ -2675,23 +2675,48 @@ const Nuvem = {
     setTimeout(() => toast('Sem conexão com a pasta da equipe: o que fizer agora fica só neste navegador.'), 800);
     return local;
   },
-  async gravar(st) {
+  // Uma gravação por vez, sempre com o estado mais recente: duas seguidas com a mesma revisão davam conflito e desfaziam a segunda.
+  fila: Promise.resolve(true), gravando: 0,
+  gravar(st) {
+    this.gravando++;
+    const p = this.fila.then(() => this._gravar(st)).finally(() => { this.gravando--; });
+    this.fila = p.catch(() => false);
+    return p;
+  },
+  // Conflito: junta a versão do servidor com a daqui. Post a post vale o de alteração mais recente;
+  // post que só existe de um lado fica; o resto (tags, colunas, páginas) fica como está aqui.
+  mesclar(srv, meu) {
+    if (!srv) return meu;
+    const m = JSON.parse(JSON.stringify(meu));
+    const daqui = new Map((m.posts || []).map(p => [p.id, p]));
+    const posts = [];
+    for (const p of (srv.posts || [])) {
+      const q = daqui.get(p.id);
+      posts.push(q && (q.updatedAt || 0) >= (p.updatedAt || 0) ? q : p);
+      daqui.delete(p.id);
+    }
+    m.posts = posts.concat([...daqui.values()]);
+    return m;
+  },
+  async _gravar(st) {
+    st = JSON.parse(JSON.stringify(state || st));
     await DB.set('state', st);
     if (!this.ativa || this.igual(st)) return true;
-    try {
-      const r = await fetch(NUVEM_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ chave: this.chave(), base: this.rev, state: st }) });
-      const j = await r.json();
-      if (j.conflito) {
+    for (let tentativa = 0; tentativa < 4; tentativa++) {
+      try {
+        const r = await fetch(NUVEM_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ chave: this.chave(), base: this.rev, state: st }) });
+        const j = await r.json();
+        if (j.erro) return false;
+        if (!j.conflito) { this.rev = j.rev; this.marca(st); return true; }
         this.rev = j.rev; this.marca(j.state);
-        if (this.txt(j.state) === this.txt(st)) return true;
-        state = migrate(j.state || st); await DB.set('state', state); route();
-        toast('Outra pessoa salvou antes: a tela mostra a versão dela. Refaça a sua última alteração.');
-        return true;
-      }
-      if (j.erro) return false;
-      this.rev = j.rev; this.marca(st); return true;
-    } catch { return false; }
+        const junto = this.mesclar(j.state, st);
+        if (this.txt(junto) === this.txt(j.state)) { if (this.txt(state) !== this.txt(j.state)) { state = migrate(j.state); route(); } await DB.set('state', state); return true; }
+        if (this.txt(junto) !== this.txt(state)) { state = migrate(junto); route(); }
+        st = JSON.parse(JSON.stringify(state));
+      } catch { return false; }
+    }
+    return false;
   },
   ocupado() {
     const a = document.activeElement;
@@ -2708,14 +2733,14 @@ const Nuvem = {
     document.body.appendChild(b);
   },
   async vigiar(forcar) {
-    if (!this.ativa || document.hidden || (this.lendo && !forcar)) return;
+    if (!this.ativa || document.hidden || this.gravando || dirty || (this.lendo && !forcar)) return;
     this.lendo = true;
     try {
       const j = await this.ler(true);
       if (j.rev === this.rev) { this.aviso(false); return; }
       if (!forcar && this.ocupado()) { this.aviso(true); return; }
       const k = await this.ler();
-      if (dirty) return;
+      if (dirty || this.gravando || k.rev !== j.rev && k.rev < j.rev) return;
       this.rev = k.rev; this.marca(k.state); this.aviso(false);
       if (this.txt(k.state) === this.txt(state)) return;
       state = migrate(k.state); await DB.set('state', state); route();
