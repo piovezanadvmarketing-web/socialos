@@ -76,7 +76,7 @@ print('base.html gerado')
 
 # Lista: barra de rolagem sempre visível, a de baixo sempre na tela (a tabela rola dentro de uma caixa da altura da janela).
 CSS = """
-.ltable-wrap{overflow:auto;max-height:calc(100vh - 230px);scrollbar-color:auto;scrollbar-width:auto}
+.ltable-wrap{overflow:auto!important;max-height:calc(100vh - 300px)!important;scrollbar-color:auto;scrollbar-width:auto}
 .ltable-wrap::-webkit-scrollbar{width:12px!important;height:12px!important;display:block}
 .ltable-wrap::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--muted) 70%,transparent);border-radius:99px;border:3px solid var(--panel)}
 .ltable-wrap::-webkit-scrollbar-thumb:hover{background:var(--muted)}
@@ -97,7 +97,7 @@ JS = """
   css.textContent = '.lrolo{display:flex;align-items:center;gap:10px;margin:0 0 8px;font:600 12px system-ui;color:var(--muted)}' +
     '.lrolo input{flex:1;accent-color:var(--accent);height:18px;cursor:pointer}' +
     '.lcaixa{display:flex;gap:8px;align-items:stretch}.lcaixa>.ltable-wrap{flex:1;min-width:0}' +
-    '.lvert{display:flex;flex-direction:column;align-items:center;gap:6px;width:30px;max-height:calc(100vh - 230px)}' +
+    '.lvert{display:flex;flex-direction:column;align-items:center;gap:6px;width:30px;max-height:calc(100vh - 300px);position:sticky;top:12px}' +
     '.lvert input{flex:1;writing-mode:vertical-lr;direction:ltr;width:18px;accent-color:var(--accent);cursor:pointer;margin:0}' +
     '.lvert button,.lrolo button{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:8px;width:30px;height:26px;cursor:pointer;font-size:14px}';
   document.head.appendChild(css);
