@@ -261,3 +261,62 @@ i = s.rindex('</body>')
 s = s[:i] + JS3 + s[i:]
 open('base.html', 'w', encoding='utf-8').write(s)
 print('arrastar na lista posto')
+
+# Formatação ao selecionar texto, como no Notion (pedido do Samuel, 27/11/2026): negrito, itálico, sublinhado,
+# tachado e marca-texto. O editor já guarda o HTML do bloco e o sanitize() já aceita B, I, U, S e MARK.
+JS4 = """
+<script>
+(function () {
+  const css = document.createElement('style');
+  css.textContent = '.fbar{position:fixed;z-index:120;display:none;gap:2px;padding:4px;border-radius:10px;background:var(--c-tinta,#1C1B18);box-shadow:0 8px 24px rgba(0,0,0,.25)}' +
+    '.fbar button{min-width:30px;height:30px;border:0;border-radius:7px;background:transparent;color:#F5F0E6;cursor:pointer;font:600 14px system-ui}' +
+    '.fbar button:hover,.fbar button.on{background:rgba(255,255,255,.16)}' +
+    '.editor .bc mark{background:#F7E27A;color:inherit;border-radius:3px;padding:0 2px}';
+  document.head.appendChild(css);
+  const bar = document.createElement('div'); bar.className = 'fbar';
+  const B = [['bold', '<b>B</b>', 'Negrito (⌘B)'], ['italic', '<i>I</i>', 'Itálico (⌘I)'], ['underline', '<u>U</u>', 'Sublinhado (⌘U)'], ['strikeThrough', '<s>S</s>', 'Tachado'], ['mark', '🖍', 'Marca-texto'], ['limpar', '⌫', 'Tirar a formatação']];
+  bar.innerHTML = B.map(([c, h, t]) => '<button type="button" data-c="' + c + '" title="' + t + '">' + h + '</button>').join('');
+  document.body.appendChild(bar);
+  let campo = null;
+  function marcar() {
+    const s = getSelection(); if (!s.rangeCount) return;
+    const r = s.getRangeAt(0);
+    const dentro = r.commonAncestorContainer.nodeType === 1 ? r.commonAncestorContainer : r.commonAncestorContainer.parentElement;
+    const m = dentro.closest('mark');
+    if (m) { m.replaceWith(...m.childNodes); return; }
+    const el = document.createElement('mark');
+    try { r.surroundContents(el); } catch (e) { el.appendChild(r.extractContents()); r.insertNode(el); }
+  }
+  bar.addEventListener('mousedown', e => e.preventDefault());
+  bar.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || !campo) return;
+    const c = b.dataset.c;
+    if (c === 'mark') marcar();
+    else if (c === 'limpar') { document.execCommand('removeFormat'); campo.querySelectorAll('mark').forEach(m => { if (getSelection().containsNode(m, true)) m.replaceWith(...m.childNodes); }); }
+    else document.execCommand(c);
+    campo.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    mostrar();
+  });
+  function mostrar() {
+    const s = getSelection();
+    const no = s.anchorNode && (s.anchorNode.nodeType === 1 ? s.anchorNode : s.anchorNode.parentElement);
+    const el = no && no.closest('.editor .bc[contenteditable]');
+    if (!el || s.isCollapsed || !s.toString().trim()) { bar.style.display = 'none'; campo = null; return; }
+    campo = el;
+    const q = s.getRangeAt(0).getBoundingClientRect();
+    bar.style.display = 'flex';
+    const w = bar.offsetWidth, h = bar.offsetHeight;
+    bar.style.left = Math.max(8, Math.min(innerWidth - w - 8, q.left + q.width / 2 - w / 2)) + 'px';
+    bar.style.top = (q.top - h - 8 < 8 ? q.bottom + 8 : q.top - h - 8) + 'px';
+    bar.querySelectorAll('button').forEach(x => { const c = x.dataset.c; let on = false; try { on = ['bold', 'italic', 'underline', 'strikeThrough'].includes(c) && document.queryCommandState(c); } catch (e) {} x.classList.toggle('on', on); });
+  }
+  document.addEventListener('selectionchange', () => requestAnimationFrame(mostrar));
+  addEventListener('scroll', () => { if (campo) mostrar(); }, true);
+})();
+</script>
+"""
+s = open('base.html', encoding='utf-8').read()
+i = s.rindex('</body>')
+s = s[:i] + JS4 + s[i:]
+open('base.html', 'w', encoding='utf-8').write(s)
+print('barra de formatação posta')
