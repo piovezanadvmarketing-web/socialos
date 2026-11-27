@@ -86,6 +86,9 @@ t("  touch(p); save(); renderListBody(); renderSidebar();\n}\nfunction onPropFie
   "    return;\n"
   "  }\n"
   "  touch(p); save(); renderListBody(); renderSidebar();\n}\nfunction onPropField(el) {")
+
+# Desfazer (⌘Z / Ctrl+Z) e refazer: o save() avisa o histórico antes de gravar (pedido do Samuel, 27/11/2026).
+t("function save() {\n  dirty = true;", "function save() {\n  window.Desfazer && window.Desfazer.antes();\n  dirty = true;")
 open('base.html', 'w', encoding='utf-8').write(s)
 print('base.html gerado')
 
@@ -320,3 +323,47 @@ i = s.rindex('</body>')
 s = s[:i] + JS4 + s[i:]
 open('base.html', 'w', encoding='utf-8').write(s)
 print('barra de formatação posta')
+
+JS5 = """
+<script>
+(function () {
+  const pilha = [], refaz = [], MAX = 100;
+  let base = null, tempo = 0, aplicando = false;
+  const foto = () => JSON.stringify(state);
+  const D = window.Desfazer = {
+    antes() {
+      if (aplicando) return;
+      if (base === null) { base = foto(); return; }
+      const agora = Date.now();
+      if (agora - tempo > 800) { pilha.push(base); if (pilha.length > MAX) pilha.shift(); refaz.length = 0; }
+      tempo = agora; base = foto();
+    },
+    sincronizar() { base = foto(); },
+    aplicar(snap) {
+      aplicando = true;
+      try {
+        state = migrate(JSON.parse(snap)); base = snap; tempo = 0;
+        save(); render(); if (ui.postId && typeof renderPost === 'function') renderPost();
+      } finally { aplicando = false; }
+    },
+    desfazer() { if (!pilha.length) { toast('Nada para desfazer'); return; } refaz.push(foto()); D.aplicar(pilha.pop()); toast('Desfeito'); },
+    refazer() { if (!refaz.length) { toast('Nada para refazer'); return; } pilha.push(foto()); D.aplicar(refaz.pop()); toast('Refeito'); },
+  };
+  const espera = setInterval(() => { if (typeof state !== 'undefined' && state) { base = foto(); clearInterval(espera); } }, 300);
+  document.addEventListener('keydown', e => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    const k = e.key.toLowerCase();
+    if (k !== 'z' && k !== 'y') return;
+    const a = document.activeElement;
+    if (a && /^(INPUT|TEXTAREA)$/.test(a.tagName)) return; // campo simples: o desfazer do próprio navegador
+    e.preventDefault(); e.stopPropagation();
+    if (k === 'y' || e.shiftKey) D.refazer(); else D.desfazer();
+  }, true);
+})();
+</script>
+"""
+s = open('base.html', encoding='utf-8').read()
+i = s.rindex('</body>')
+s = s[:i] + JS5 + s[i:]
+open('base.html', 'w', encoding='utf-8').write(s)
+print('desfazer posto')

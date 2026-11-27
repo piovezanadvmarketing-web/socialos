@@ -114,7 +114,7 @@ const Nuvem = {
       if (dirty || this.gravando || k.rev !== j.rev && k.rev < j.rev) return;
       this.rev = k.rev; this.marca(k.state); this.aviso(false);
       if (this.txt(k.state) === this.txt(state)) return;
-      state = migrate(k.state); await DB.set('state', state); route();
+      state = migrate(k.state); await DB.set('state', state); route(); window.Desfazer && window.Desfazer.sincronizar();
     } catch { } finally { this.lendo = false; }
   },
 };
